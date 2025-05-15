@@ -1,0 +1,15 @@
+This NOTICE file is provided in compliance with section 4(d) of the Apache License, Version 2.0.
+
+Docker SDK for Go
+Copyright (c) 2025-present Docker, Inc.
+
+This product includes software developed at Docker, Inc. (https://www.docker.com).
+
+Based on the following third party software:
+
+## cpuguy/dockercfg (MIT License)
+Source: https://github.com/cpuguy83/dockercfg  
+Author: cpuguy83 and contributors  
+License: MIT (see third_party/cpuguy83/dockercfg/LICENSE)
+
+This code has been modified.
