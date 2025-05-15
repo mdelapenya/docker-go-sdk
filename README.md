@@ -1,0 +1,59 @@
+# Docker SDK for Go
+
+A lightweight, modular SDK for interacting with Docker configuration and context data in Go.
+
+This project is designed to be:
+- **Extensible**: Built with composability in mind to support additional Docker-related features.
+- **Lightweight**: No unnecessary dependencies; only what's needed to manage Docker configurations.
+- **Go-native**: Idiomatic Go modules for clean integration in CLI tools and backend services.
+
+## Features
+
+- Parse and load Docker CLI config (`~/.docker/config.json`)
+- Handle credential helpers
+- Read and manage Docker contexts
+
+## Installation
+
+```bash
+go get github.com/mdelapenya/docker-sdk-go
+```
+
+## Usage
+
+### dockerconfig
+
+```go
+cfg, err := dockerconfig.Load()
+if err != nil {
+    log.Fatalf("failed to load config: %v", err)
+}
+
+auth, ok := cfg.AuthConfigs["https://index.docker.io/v1/"]
+if ok {
+    fmt.Println("Username:", auth.Username)
+}
+```
+
+### dockercontext
+
+```go
+dockerHost, err := dockercontext.CurrentDockerHost()
+if err != nil {
+    log.Fatalf("failed to get current docker host: %v", err)
+}
+```
+
+More usage examples are coming soon!
+
+## Contributing
+
+We welcome contributions! Please open issues or submit pull requests. Make sure your changes are well-tested and documented.
+
+## Licensing
+
+This project is licensed under the [Apache License 2.0](./LICENSE).
+
+It includes portions of code derived from the other open source projects which are licensed under the MIT License. Their original licenses are preserved [here](./third_party), and attribution is provided in the [NOTICE](./NOTICE) file.
+
+Modifications have been made to this code as part of its integration into this project.
