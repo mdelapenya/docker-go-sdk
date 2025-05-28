@@ -7,7 +7,7 @@ import (
 	"io/fs"
 	"strings"
 
-	"github.com/mdelapenya/docker-sdk-go/dockerconfig/auth"
+	"github.com/docker/docker-sdk-go/dockerconfig/auth"
 )
 
 // This is used by the docker CLI in cases where an oauth identity token is used.

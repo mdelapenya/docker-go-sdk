@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/mdelapenya/docker-sdk-go/dockerconfig"
-	"github.com/mdelapenya/docker-sdk-go/dockercontext/internal"
+	"github.com/docker/docker-sdk-go/dockerconfig"
+	"github.com/docker/docker-sdk-go/dockercontext/internal"
 )
 
 func TestCurrent(t *testing.T) {

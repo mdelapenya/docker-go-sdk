@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/mdelapenya/docker-sdk-go/dockerconfig/auth"
+	"github.com/docker/docker-sdk-go/dockerconfig/auth"
 )
 
 const (
