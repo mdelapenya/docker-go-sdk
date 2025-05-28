@@ -28,7 +28,7 @@ This project is designed to be:
 go get github.com/docker/docker-sdk-go
 ```
 
-## Usage
+## Usage
 
 ### dockerconfig
 
