@@ -44,6 +44,8 @@ jobs:
       - detect-packages
     if: needs.detect-packages.outputs.packages != '[]' # Ensure job runs only if there are changes
     strategy:
+      # We don't want to fail the build the soonest but identify which modules passed and failed.
+      fail-fast: false
       matrix:
         package: ${{ fromJSON(needs.detect-packages.outputs.packages || '[]') }}
     uses: ./.github/workflows/ci-lint-go.yml
