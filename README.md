@@ -57,7 +57,7 @@ More usage examples are coming soon!
 
 ## Contributing
 
-We welcome contributions! Please open issues or submit pull requests. Make sure your changes are well-tested and documented.
+We welcome contributions! Please read the [CONTRIBUTING](./CONTRIBUTING.md) file and open issues or submit pull requests once you're ready. Make sure your changes are well-tested and documented.
 
 ## Licensing
 
