@@ -88,7 +88,7 @@ formatters:
       sections:
         - standard
         - default
-        - prefix(github.com/mdelapenya)
+        - prefix(github.com/docker)
   exclusions:
     generated: lax
     paths:
