@@ -1,4 +1,4 @@
-module github.com/docker/docker-sdk-go/dockerconfig
+module github.com/docker/go-sdk/dockerconfig
 
 go 1.23.6
 

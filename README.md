@@ -25,7 +25,7 @@ This project is designed to be:
 ## Installation
 
 ```bash
-go get github.com/docker/docker-sdk-go
+go get github.com/docker/go-sdk
 ```
 
 ## Usage

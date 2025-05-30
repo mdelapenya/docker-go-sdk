@@ -9,8 +9,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/docker/docker-sdk-go/dockerconfig"
-	"github.com/docker/docker-sdk-go/dockercontext/internal"
+	"github.com/docker/go-sdk/dockerconfig"
+	"github.com/docker/go-sdk/dockercontext/internal"
 )
 
 const (

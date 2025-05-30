@@ -4,7 +4,7 @@
 
 There are many ways to contribute, from writing tutorials or blog posts, improving the documentation, submitting bug reports and feature requests, or writing code for the any of the modules in the repository.
 
-In any case, if you like the project, please star the project on [GitHub](https://github.com/docker/docker-sdk-go/stargazers) and help spread the word :)
+In any case, if you like the project, please star the project on [GitHub](https://github.com/docker/go-sdk/stargazers) and help spread the word :)
 Also join our [Docker Community Slack workspace](https://communityinviter.com/apps/dockercommunity/docker-community) to get help, share your ideas, and chat with the community.
 
 ## Questions
@@ -15,7 +15,7 @@ feedback and ideas are always welcome.
 
 ## Code contributions
 
-If you have a bug fix or new feature that you would like to contribute, please find or open an [issue](https://github.com/docker/docker-sdk-go/issues) first.
+If you have a bug fix or new feature that you would like to contribute, please find or open an [issue](https://github.com/docker/go-sdk/issues) first.
 It's important to talk about what you would like to do, as there may already be someone working on it,
 or there may be context to be aware of before implementing the change.
 
