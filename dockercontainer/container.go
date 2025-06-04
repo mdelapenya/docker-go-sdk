@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/go-sdk/dockerclient"
 	cexec "github.com/docker/go-sdk/dockercontainer/exec"
 	"github.com/docker/go-sdk/dockercontainer/wait"
 )
@@ -66,5 +67,51 @@ type Container struct {
 // Alternatively, to separate the stdout and stderr from [io.Reader] and interpret these headers properly,
 // [github.com/docker/docker/pkg/stdcopy.StdCopy] from the Docker API should be used.
 func (c *Container) Exec(ctx context.Context, cmd []string, options ...cexec.ProcessOption) (int, io.Reader, error) {
-	return 0, nil, fmt.Errorf("not implemented")
+	cli, err := dockerclient.NewClient(ctx)
+	if err != nil {
+		return 0, nil, fmt.Errorf("new client: %w", err)
+	}
+
+	processOptions := cexec.NewProcessOptions(cmd)
+
+	// processing all the options in a first loop because for the multiplexed option
+	// we first need to have a containerExecCreateResponse
+	for _, o := range options {
+		o.Apply(processOptions)
+	}
+
+	response, err := cli.Client().ContainerExecCreate(ctx, c.ID, processOptions.ExecConfig)
+	if err != nil {
+		return 0, nil, fmt.Errorf("container exec create: %w", err)
+	}
+
+	hijack, err := cli.Client().ContainerExecAttach(ctx, response.ID, container.ExecAttachOptions{})
+	if err != nil {
+		return 0, nil, fmt.Errorf("container exec attach: %w", err)
+	}
+
+	processOptions.Reader = hijack.Reader
+
+	// second loop to process the multiplexed option, as now we have a reader
+	// from the created exec response.
+	for _, o := range options {
+		o.Apply(processOptions)
+	}
+
+	var exitCode int
+	for {
+		execResp, err := cli.Client().ContainerExecInspect(ctx, response.ID)
+		if err != nil {
+			return 0, nil, fmt.Errorf("container exec inspect: %w", err)
+		}
+
+		if !execResp.Running {
+			exitCode = execResp.ExitCode
+			break
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	return exitCode, processOptions.Reader, nil
 }
