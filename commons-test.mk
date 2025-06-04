@@ -15,13 +15,17 @@ $(GOBIN)/golangci-lint:
 $(GOBIN)/gotestsum:
 	$(call go_install,gotest.tools/gotestsum@latest)
 
+$(GOBIN)/mockery:
+	$(call go_install,github.com/vektra/mockery/v2@v2.45)
+
 .PHONY: install-tools
-install-tools: $(GOBIN)/golangci-lint $(GOBIN)/gotestsum
+install-tools: $(GOBIN)/golangci-lint $(GOBIN)/gotestsum $(GOBIN)/mockery
 
 .PHONY: clean-tools
 clean-tools:
 	rm $(GOBIN)/golangci-lint
 	rm $(GOBIN)/gotestsum
+	rm $(GOBIN)/mockery
 
 # ------------------------------------------------------------------------------
 # Test
@@ -54,7 +58,13 @@ tidy:
 .PHONY: lint
 lint: $(GOBIN)/golangci-lint
 	golangci-lint run --verbose -c $(ROOT_DIR)/.golangci.yml --fix
+
 # ------------------------------------------------------------------------------
+# Mockery
+# ------------------------------------------------------------------------------
+.PHONY: generate
+generate: $(GOBIN)/mockery
+	go generate ./...
 
 # ------------------------------------------------------------------------------
 # Security

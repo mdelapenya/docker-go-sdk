@@ -2,5 +2,6 @@ go 1.23.6
 
 use (
 	./dockerconfig
+	./dockercontainer
 	./dockercontext
 )
