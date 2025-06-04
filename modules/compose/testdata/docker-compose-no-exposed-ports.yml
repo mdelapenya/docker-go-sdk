@@ -1,0 +1,5 @@
+services:
+  {{ .ServiceType }}-nginx:
+    image: nginx:stable-alpine
+    ports:
+     - "80"

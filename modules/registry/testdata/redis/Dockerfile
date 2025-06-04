@@ -1,0 +1,3 @@
+ARG REGISTRY_HOST=localhost:5000
+
+FROM ${REGISTRY_HOST}/redis:5.0-alpine
