@@ -3,7 +3,10 @@ package dockerclient
 import (
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
 	"path/filepath"
+	"time"
 
 	"github.com/docker/docker/api/types/system"
 	"github.com/docker/docker/client"
@@ -18,22 +21,45 @@ const (
 	tlsCACertFile = "ca.pem"
 	tlsCertFile   = "cert.pem"
 	tlsKeyFile    = "key.pem"
-
-	// packagePath is the package path for the docker-go-sdk package.
-	packagePath = "github.com/docker/go-sdk"
 )
 
-// NewClient returns a new client for interacting with containers.
-func NewClient(ctx context.Context, options ...ClientOption) (*Client, error) {
+// New returns a new client for interacting with containers.
+// The client is configured using the provided options, that must be compatible with
+// docker's [client.Opt] type.
+//
+// The Docker host is automatically resolved reading it from the current docker context;
+// in case you need to pass [client.Opt] options that override the docker host, you can
+// do so by providing the [FromDockerOpt] options adapter.
+// E.g.
+//
+//	cli, err := dockerclient.New(context.Background(), dockerclient.FromDockerOpt(client.WithHost("tcp://foobar:2375")))
+//
+// The client uses a logger that is initialized to [io.Discard]; you can change it by
+// providing the [WithLogger] option.
+// E.g.
+//
+//	cli, err := dockerclient.New(context.Background(), dockerclient.WithLogger(slog.Default()))
+//
+// The client is safe for concurrent use by multiple goroutines.
+func New(ctx context.Context, options ...ClientOption) (*Client, error) {
 	client := &Client{}
 	for _, opt := range options {
 		if err := opt.Apply(client); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("apply option: %w", err)
 		}
 	}
 
 	if err := client.initOnce(ctx); err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
+	}
+
+	healthCheck := client.healthCheck
+	if healthCheck == nil {
+		// use the default health check if not set
+		healthCheck = defaultHealthCheck
+	}
+	if err := healthCheck(ctx)(client); err != nil {
+		return nil, fmt.Errorf("health check: %w", err)
 	}
 
 	return client, nil
@@ -53,20 +79,23 @@ func (c *Client) initOnce(_ context.Context) error {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
-	if c.cfg, c.err = newConfig(); c.err != nil {
-		return c.err
+	if c.log == nil {
+		c.log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-
-	opts := []client.Opt{client.FromEnv, client.WithAPIVersionNegotiation()}
 
 	dockerHost, err := dockercontext.CurrentDockerHost()
 	if err != nil {
 		return fmt.Errorf("current docker host: %w", err)
 	}
 
-	// Always add the resolved docker host to the client options,
-	// as it cannot be empty.
-	opts = append(opts, client.WithHost(dockerHost))
+	if c.cfg, c.err = newConfig(dockerHost); c.err != nil {
+		return c.err
+	}
+
+	opts := []client.Opt{client.FromEnv, client.WithAPIVersionNegotiation()}
+
+	// Add all collected Docker options
+	opts = append(opts, c.dockerOpts...)
 
 	if c.cfg.TLSVerify {
 		// For further information see:
@@ -76,6 +105,10 @@ func (c *Client) initOnce(_ context.Context) error {
 			filepath.Join(c.cfg.CertPath, tlsCertFile),
 			filepath.Join(c.cfg.CertPath, tlsKeyFile),
 		))
+	}
+	if c.cfg.Host != "" {
+		// apply the host from the config if it is set
+		opts = append(opts, client.WithHost(c.cfg.Host))
 	}
 
 	httpHeaders := make(map[string]string)
@@ -99,7 +132,6 @@ func (c *Client) initOnce(_ context.Context) error {
 // Close closes the client.
 // This method is safe for concurrent use by multiple goroutines.
 func (c *Client) Close() error {
-	// Change from RLock to Lock since we're performing a write operation
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
@@ -125,4 +157,37 @@ func (c *Client) Client() *client.Client {
 	defer c.mtx.RUnlock()
 
 	return c.client
+}
+
+// Logger returns the logger for the client.
+// This method is safe for concurrent use by multiple goroutines.
+func (c *Client) Logger() *slog.Logger {
+	c.mtx.RLock()
+	defer c.mtx.RUnlock()
+	return c.log
+}
+
+// defaultHealthCheck is the default health check for the client.
+// It retries the ping to the docker daemon until it is ready.
+func defaultHealthCheck(ctx context.Context) func(c *Client) error {
+	return func(c *Client) error {
+		// Add a retry mechanism to ensure Docker daemon is ready
+		var pingErr error
+		for i := range 3 { // Try up to 3 times
+			_, pingErr = c.client.Ping(ctx)
+			if pingErr == nil {
+				break
+			}
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(time.Millisecond * time.Duration(i+1) * 100): // Exponential backoff
+				continue
+			}
+		}
+		if pingErr != nil {
+			return fmt.Errorf("docker daemon not ready: %w", pingErr)
+		}
+		return nil
+	}
 }

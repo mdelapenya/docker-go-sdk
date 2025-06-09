@@ -7,6 +7,7 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
+	"github.com/docker/go-sdk/dockerclient"
 	"github.com/docker/go-sdk/dockercontainer/exec"
 	"github.com/docker/go-sdk/dockercontainer/wait"
 )
@@ -28,10 +29,10 @@ func (opt CustomizeDefinitionOption) Customize(def *Definition) error {
 	return opt(def)
 }
 
-// WithDockerfile allows to build a container from a Dockerfile
-func WithDockerfile(df FromDockerfile) CustomizeDefinitionOption {
+// WithDockerClient sets the docker client for a container
+func WithDockerClient(dockerClient *dockerclient.Client) CustomizeDefinitionOption {
 	return func(def *Definition) error {
-		def.FromDockerfile = df
+		def.DockerClient = dockerClient
 
 		return nil
 	}
@@ -80,18 +81,6 @@ func WithHostConfigModifier(modifier func(hostConfig *container.HostConfig)) Cus
 	}
 }
 
-// WithHostPortAccess allows to expose the host ports to the container
-func WithHostPortAccess(ports ...int) CustomizeDefinitionOption {
-	return func(def *Definition) error {
-		if def.HostAccessPorts == nil {
-			def.HostAccessPorts = []int{}
-		}
-
-		def.HostAccessPorts = append(def.HostAccessPorts, ports...)
-		return nil
-	}
-}
-
 // WithName will set the name of the container.
 func WithName(containerName string) CustomizeDefinitionOption {
 	return func(def *Definition) error {
@@ -111,23 +100,10 @@ func WithNoStart() CustomizeDefinitionOption {
 	}
 }
 
-// WithReuseByName will mark a container to be reused if it exists or create a new one if it doesn't.
-// A container name must be provided to identify the container to be reused.
-func WithReuseByName(containerName string) CustomizeDefinitionOption {
-	return func(def *Definition) error {
-		if err := WithName(containerName)(def); err != nil {
-			return err
-		}
-
-		def.Reuse = true
-		return nil
-	}
-}
-
 // WithImage sets the image for a container
 func WithImage(image string) CustomizeDefinitionOption {
 	return func(def *Definition) error {
-		def.Image = image
+		def.image = image
 
 		return nil
 	}
@@ -185,7 +161,7 @@ func WithStartupCommand(execs ...Executable) CustomizeDefinitionOption {
 		}
 
 		for _, exec := range execs {
-			execFn := func(ctx context.Context, c Container) error {
+			execFn := func(ctx context.Context, c *Container) error {
 				_, _, err := c.Exec(ctx, exec.AsCommand(), exec.Options()...)
 				return err
 			}
@@ -207,7 +183,7 @@ func WithAfterReadyCommand(execs ...Executable) CustomizeDefinitionOption {
 		postReadiesHook := []ContainerHook{}
 
 		for _, exec := range execs {
-			execFn := func(ctx context.Context, c Container) error {
+			execFn := func(ctx context.Context, c *Container) error {
 				_, _, err := c.Exec(ctx, exec.AsCommand(), exec.Options()...)
 				return err
 			}

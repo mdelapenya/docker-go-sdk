@@ -18,9 +18,11 @@ This project is designed to be:
 
 ## Features
 
+- Initialize a Docker client, using the current Docker context to resolve the Docker host and socket
 - Parse and load Docker CLI config (`~/.docker/config.json`)
 - Handle credential helpers
 - Read and manage Docker contexts
+- Pull images from a remote registry, retrying on non-permanent errors
 
 ## Installation
 
@@ -29,6 +31,16 @@ go get github.com/docker/go-sdk
 ```
 
 ## Usage
+
+### dockerclient
+
+```go
+cli, err := dockerclient.New(context.Background())
+if err != nil {
+    log.Fatalf("failed to create docker client: %v", err)
+}
+
+```
 
 ### dockerconfig
 
@@ -53,6 +65,17 @@ if err != nil {
 }
 ```
 
+### dockerimage
+
+```go
+err := dockerimage.Pull(ctx, mockImageClient, "someTag", image.PullOptions{})
+if err != nil {
+    log.Fatalf("failed to pull image: %v", err)
+}
+
+```
+
+
 More usage examples are coming soon!
 
 ## Contributing
@@ -63,6 +86,6 @@ We welcome contributions! Please read the [CONTRIBUTING](./CONTRIBUTING.md) file
 
 This project is licensed under the [Apache License 2.0](./LICENSE).
 
-It includes portions of code derived from the other open source projects which are licensed under the MIT License. Their original licenses are preserved [here](./third_party), and attribution is provided in the [NOTICE](./NOTICE) file.
+It includes portions of code derived from other open source projects which are licensed under the MIT License. Their original licenses are preserved [here](./third_party), and attribution is provided in the [NOTICE](./NOTICE) file.
 
 Modifications have been made to this code as part of its integration into this project.

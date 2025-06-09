@@ -3,7 +3,6 @@ package dockerclient
 import (
 	"context"
 	"fmt"
-	"log"
 	"log/slog"
 	"sync"
 
@@ -15,18 +14,31 @@ import (
 	"github.com/docker/go-sdk/dockercontext"
 )
 
+// packagePath is the package path for the docker-go-sdk package.
+const packagePath = "github.com/docker/go-sdk"
+
 // DefaultClient is the default client for interacting with containers.
 var DefaultClient = &Client{}
 
 // Client is a type that represents a client for interacting with containers.
 type Client struct {
-	log slog.Logger
+	// log is the logger for the client.
+	log *slog.Logger
 
 	// mtx is a mutex for synchronizing access to the fields below.
-	mtx    sync.RWMutex
+	mtx sync.RWMutex
+
+	// client is the underlying docker client.
 	client *client.Client
-	cfg    *config
-	err    error
+
+	// cfg is the configuration for the client, obtained from the environment variables.
+	cfg *config
+
+	// err is used to store errors that occur during the client's initialization.
+	err error
+
+	// dockerOpts are options to be passed to the docker client.
+	dockerOpts []client.Opt
 
 	// extraHeaders are additional headers to be sent to the docker client.
 	extraHeaders map[string]string
@@ -34,6 +46,10 @@ type Client struct {
 	// cached docker info
 	dockerInfo    system.Info
 	dockerInfoSet bool
+
+	// healthCheck is a function that returns the health of the docker daemon.
+	// If not set, the default health check will be used.
+	healthCheck func(ctx context.Context) func(c *Client) error
 }
 
 // implements SystemAPIClient interface
@@ -62,14 +78,6 @@ func (c *Client) Info(ctx context.Context) (system.Info, error) {
 	c.dockerInfo = info
 	c.dockerInfoSet = true
 
-	infoMessage := `%v - Connected to docker: 
-  Server Version: %v
-  API Version: %v
-  Operating System: %v
-  Total Memory: %v MB%s
-  Docker Context: %s
-  Resolved Docker Host: %s
-`
 	infoLabels := ""
 	if len(c.dockerInfo.Labels) > 0 {
 		infoLabels = `
@@ -89,13 +97,15 @@ func (c *Client) Info(ctx context.Context) (system.Info, error) {
 		return c.dockerInfo, fmt.Errorf("current docker host: %w", err)
 	}
 
-	log.Printf(infoMessage, packagePath,
-		c.dockerInfo.ServerVersion,
-		c.client.ClientVersion(),
-		c.dockerInfo.OperatingSystem, c.dockerInfo.MemTotal/1024/1024,
-		infoLabels,
-		currentContext,
-		dockerHost,
+	c.log.Info("Connected to docker",
+		"package", packagePath,
+		"server_version", c.dockerInfo.ServerVersion,
+		"client_version", c.client.ClientVersion(),
+		"operating_system", c.dockerInfo.OperatingSystem,
+		"mem_total", c.dockerInfo.MemTotal/1024/1024,
+		"labels", infoLabels,
+		"current_context", currentContext,
+		"docker_host", dockerHost,
 	)
 
 	return c.dockerInfo, nil
