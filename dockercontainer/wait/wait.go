@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
@@ -30,6 +31,7 @@ type StrategyTarget interface {
 	Exec(context.Context, []string, ...exec.ProcessOption) (int, io.Reader, error)
 	State(context.Context) (*container.State, error)
 	CopyFromContainer(ctx context.Context, filePath string) (io.ReadCloser, error)
+	Logger() *slog.Logger
 }
 
 func checkTarget(ctx context.Context, target StrategyTarget) error {
@@ -54,7 +56,7 @@ func checkState(state *container.State) error {
 	}
 }
 
-func defaultStartupTimeout() time.Duration {
+func defaultTimeout() time.Duration {
 	return 60 * time.Second
 }
 

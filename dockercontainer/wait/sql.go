@@ -22,7 +22,7 @@ func ForSQL(port nat.Port, driver string, url func(host string, port nat.Port) s
 		Port:           port,
 		URL:            url,
 		Driver:         driver,
-		startupTimeout: defaultStartupTimeout(),
+		startupTimeout: defaultTimeout(),
 		PollInterval:   defaultPollInterval(),
 		query:          defaultForSQLQuery,
 	}
@@ -39,8 +39,8 @@ type waitForSQL struct {
 	query          string
 }
 
-// WithStartupTimeout can be used to change the default startup timeout
-func (w *waitForSQL) WithStartupTimeout(timeout time.Duration) *waitForSQL {
+// WithTimeout can be used to change the default startup timeout
+func (w *waitForSQL) WithTimeout(timeout time.Duration) *waitForSQL {
 	w.timeout = &timeout
 	return w
 }
@@ -65,7 +65,7 @@ func (w *waitForSQL) Timeout() *time.Duration {
 //
 // If it doesn't succeed until the timeout value which defaults to 60 seconds, it will return an error.
 func (w *waitForSQL) WaitUntilReady(ctx context.Context, target StrategyTarget) error {
-	timeout := defaultStartupTimeout()
+	timeout := defaultTimeout()
 	if w.timeout != nil {
 		timeout = *w.timeout
 	}

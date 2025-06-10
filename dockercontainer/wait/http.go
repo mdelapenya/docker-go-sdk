@@ -70,8 +70,8 @@ func defaultStatusCodeMatcher(status int) bool {
 // since go has neither covariance nor generics, the return type must be the type of the concrete implementation
 // this is true for all properties, even the "shared" ones like startupTimeout
 
-// WithStartupTimeout can be used to change the default startup timeout
-func (ws *HTTPStrategy) WithStartupTimeout(timeout time.Duration) *HTTPStrategy {
+// WithTimeout can be used to change the default startup timeout
+func (ws *HTTPStrategy) WithTimeout(timeout time.Duration) *HTTPStrategy {
 	ws.timeout = &timeout
 	return ws
 }
@@ -156,7 +156,7 @@ func (ws *HTTPStrategy) Timeout() *time.Duration {
 
 // WaitUntilReady implements Strategy.WaitUntilReady
 func (ws *HTTPStrategy) WaitUntilReady(ctx context.Context, target StrategyTarget) error {
-	timeout := defaultStartupTimeout()
+	timeout := defaultTimeout()
 	if ws.timeout != nil {
 		timeout = *ws.timeout
 	}

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"strconv"
 	"testing"
@@ -15,7 +15,6 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/go-connections/nat"
 	"github.com/docker/go-sdk/dockercontainer/exec"
-	tclog "github.com/docker/go-sdk/dockercontainer/log"
 )
 
 func TestWaitForListeningPortSucceeds(t *testing.T) {
@@ -51,10 +50,11 @@ func TestWaitForListeningPortSucceeds(t *testing.T) {
 			}
 			return 0, nil, nil
 		},
+		LoggerImpl: slog.Default,
 	}
 
 	wg := ForListeningPort("80").
-		WithStartupTimeout(5 * time.Second).
+		WithTimeout(5 * time.Second).
 		WithPollInterval(100 * time.Millisecond)
 
 	err = wg.WaitUntilReady(context.Background(), target)
@@ -95,11 +95,12 @@ func TestWaitForListeningPortInternallySucceeds(t *testing.T) {
 			}
 			return 0, nil, nil
 		},
+		LoggerImpl: slog.Default,
 	}
 
 	wg := ForListeningPort(localPort).
 		SkipExternalCheck().
-		WithStartupTimeout(5 * time.Second).
+		WithTimeout(5 * time.Second).
 		WithPollInterval(100 * time.Millisecond)
 
 	err = wg.WaitUntilReady(context.Background(), target)
@@ -133,10 +134,11 @@ func TestWaitForMappedPortSucceeds(t *testing.T) {
 				Running: true,
 			}, nil
 		},
+		LoggerImpl: slog.Default,
 	}
 
 	wg := ForMappedPort(localPort).
-		WithStartupTimeout(5 * time.Second).
+		WithTimeout(5 * time.Second).
 		WithPollInterval(100 * time.Millisecond)
 
 	err = wg.WaitUntilReady(context.Background(), target)
@@ -204,10 +206,11 @@ func TestWaitForExposedPortSkipChecksSucceeds(t *testing.T) {
 			}
 			return 0, nil, nil
 		},
+		LoggerImpl: slog.Default,
 	}
 
 	wg := ForExposedPort().
-		WithStartupTimeout(5 * time.Second).
+		WithTimeout(5 * time.Second).
 		WithPollInterval(100 * time.Millisecond)
 
 	err = wg.WaitUntilReady(context.Background(), target)
@@ -235,7 +238,7 @@ func TestHostPortStrategyFailsWhileGettingPortDueToOOMKilledContainer(t *testing
 	}
 
 	wg := NewHostPortStrategy("80").
-		WithStartupTimeout(5 * time.Second).
+		WithTimeout(5 * time.Second).
 		WithPollInterval(100 * time.Millisecond)
 
 	{
@@ -266,7 +269,7 @@ func TestHostPortStrategyFailsWhileGettingPortDueToExitedContainer(t *testing.T)
 	}
 
 	wg := NewHostPortStrategy("80").
-		WithStartupTimeout(5 * time.Second).
+		WithTimeout(5 * time.Second).
 		WithPollInterval(100 * time.Millisecond)
 
 	{
@@ -296,7 +299,7 @@ func TestHostPortStrategyFailsWhileGettingPortDueToUnexpectedContainerStatus(t *
 	}
 
 	wg := NewHostPortStrategy("80").
-		WithStartupTimeout(5 * time.Second).
+		WithTimeout(5 * time.Second).
 		WithPollInterval(100 * time.Millisecond)
 
 	{
@@ -321,7 +324,7 @@ func TestHostPortStrategyFailsWhileExternalCheckingDueToOOMKilledContainer(t *te
 	}
 
 	wg := NewHostPortStrategy("80").
-		WithStartupTimeout(5 * time.Second).
+		WithTimeout(5 * time.Second).
 		WithPollInterval(100 * time.Millisecond)
 
 	{
@@ -347,7 +350,7 @@ func TestHostPortStrategyFailsWhileExternalCheckingDueToExitedContainer(t *testi
 	}
 
 	wg := NewHostPortStrategy("80").
-		WithStartupTimeout(5 * time.Second).
+		WithTimeout(5 * time.Second).
 		WithPollInterval(100 * time.Millisecond)
 
 	{
@@ -372,7 +375,7 @@ func TestHostPortStrategyFailsWhileExternalCheckingDueToUnexpectedContainerStatu
 	}
 
 	wg := NewHostPortStrategy("80").
-		WithStartupTimeout(5 * time.Second).
+		WithTimeout(5 * time.Second).
 		WithPollInterval(100 * time.Millisecond)
 
 	{
@@ -412,7 +415,7 @@ func TestHostPortStrategyFailsWhileInternalCheckingDueToOOMKilledContainer(t *te
 	}
 
 	wg := NewHostPortStrategy("80").
-		WithStartupTimeout(5 * time.Second).
+		WithTimeout(5 * time.Second).
 		WithPollInterval(100 * time.Millisecond)
 
 	{
@@ -453,7 +456,7 @@ func TestHostPortStrategyFailsWhileInternalCheckingDueToExitedContainer(t *testi
 	}
 
 	wg := NewHostPortStrategy("80").
-		WithStartupTimeout(5 * time.Second).
+		WithTimeout(5 * time.Second).
 		WithPollInterval(100 * time.Millisecond)
 
 	{
@@ -493,7 +496,7 @@ func TestHostPortStrategyFailsWhileInternalCheckingDueToUnexpectedContainerStatu
 	}
 
 	wg := NewHostPortStrategy("80").
-		WithStartupTimeout(5 * time.Second).
+		WithTimeout(5 * time.Second).
 		WithPollInterval(100 * time.Millisecond)
 
 	{
@@ -510,6 +513,9 @@ func TestHostPortStrategySucceedsGivenShellIsNotInstalled(t *testing.T) {
 	rawPort := listener.Addr().(*net.TCPAddr).Port
 	port, err := nat.NewPort("tcp", strconv.Itoa(rawPort))
 	require.NoError(t, err)
+
+	buf := &bytes.Buffer{}
+	logger := slog.New(slog.NewTextHandler(buf, nil))
 
 	target := &MockStrategyTarget{
 		HostImpl: func(_ context.Context) (string, error) {
@@ -543,21 +549,14 @@ func TestHostPortStrategySucceedsGivenShellIsNotInstalled(t *testing.T) {
 			// This is the error that would be returned if the shell is not installed.
 			return exitEaccess, nil, nil
 		},
+		LoggerImpl: func() *slog.Logger {
+			return logger
+		},
 	}
 
 	wg := NewHostPortStrategy("80").
-		WithStartupTimeout(5 * time.Second).
+		WithTimeout(5 * time.Second).
 		WithPollInterval(100 * time.Millisecond)
-
-	oldLogger := tclog.Default()
-
-	var buf bytes.Buffer
-	logger := log.New(&buf, "test", log.LstdFlags)
-
-	tclog.SetDefault(logger)
-	t.Cleanup(func() {
-		tclog.SetDefault(oldLogger)
-	})
 
 	err = wg.WaitUntilReady(context.Background(), target)
 	require.NoError(t, err)
@@ -573,6 +572,9 @@ func TestHostPortStrategySucceedsGivenShellIsNotFound(t *testing.T) {
 	rawPort := listener.Addr().(*net.TCPAddr).Port
 	port, err := nat.NewPort("tcp", strconv.Itoa(rawPort))
 	require.NoError(t, err)
+
+	bufLogger := &bytes.Buffer{}
+	logger := slog.New(slog.NewTextHandler(bufLogger, nil))
 
 	target := &MockStrategyTarget{
 		HostImpl: func(_ context.Context) (string, error) {
@@ -606,24 +608,17 @@ func TestHostPortStrategySucceedsGivenShellIsNotFound(t *testing.T) {
 			// This is the error that would be returned if the shell is not found.
 			return exitCmdNotFound, nil, nil
 		},
+		LoggerImpl: func() *slog.Logger {
+			return logger
+		},
 	}
 
 	wg := NewHostPortStrategy("80").
-		WithStartupTimeout(5 * time.Second).
+		WithTimeout(5 * time.Second).
 		WithPollInterval(100 * time.Millisecond)
-
-	oldLogger := tclog.Default()
-
-	var buf bytes.Buffer
-	logger := log.New(&buf, "test", log.LstdFlags)
-
-	tclog.SetDefault(logger)
-	t.Cleanup(func() {
-		tclog.SetDefault(oldLogger)
-	})
 
 	err = wg.WaitUntilReady(context.Background(), target)
 	require.NoError(t, err)
 
-	require.Contains(t, buf.String(), "Shell not found in container")
+	require.Contains(t, bufLogger.String(), "Shell not found in container")
 }

@@ -39,8 +39,8 @@ func defaultExitCodeMatcher(exitCode int) bool {
 	return exitCode == 0
 }
 
-// WithStartupTimeout can be used to change the default startup timeout
-func (ws *ExecStrategy) WithStartupTimeout(startupTimeout time.Duration) *ExecStrategy {
+// WithTimeout can be used to change the default startup timeout
+func (ws *ExecStrategy) WithTimeout(startupTimeout time.Duration) *ExecStrategy {
 	ws.timeout = &startupTimeout
 	return ws
 }
@@ -77,7 +77,7 @@ func (ws *ExecStrategy) Timeout() *time.Duration {
 }
 
 func (ws *ExecStrategy) WaitUntilReady(ctx context.Context, target StrategyTarget) error {
-	timeout := defaultStartupTimeout()
+	timeout := defaultTimeout()
 	if ws.timeout != nil {
 		timeout = *ws.timeout
 	}

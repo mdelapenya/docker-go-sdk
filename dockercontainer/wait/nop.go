@@ -3,6 +3,7 @@ package wait
 import (
 	"context"
 	"io"
+	"log/slog"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
@@ -11,8 +12,9 @@ import (
 )
 
 var (
-	_ Strategy        = (*NopStrategy)(nil)
-	_ StrategyTimeout = (*NopStrategy)(nil)
+	_          Strategy        = (*NopStrategy)(nil)
+	_          StrategyTimeout = (*NopStrategy)(nil)
+	noopLogger                 = slog.New(slog.NewTextHandler(io.Discard, nil))
 )
 
 type NopStrategy struct {
@@ -32,7 +34,7 @@ func (ws *NopStrategy) Timeout() *time.Duration {
 	return ws.timeout
 }
 
-func (ws *NopStrategy) WithStartupTimeout(timeout time.Duration) *NopStrategy {
+func (ws *NopStrategy) WithTimeout(timeout time.Duration) *NopStrategy {
 	ws.timeout = &timeout
 	return ws
 }
@@ -72,4 +74,8 @@ func (st *NopStrategyTarget) State(_ context.Context) (*container.State, error) 
 
 func (st *NopStrategyTarget) CopyFromContainer(_ context.Context, _ string) (io.ReadCloser, error) {
 	return st.ReaderCloser, nil
+}
+
+func (st *NopStrategyTarget) Logger() *slog.Logger {
+	return noopLogger
 }

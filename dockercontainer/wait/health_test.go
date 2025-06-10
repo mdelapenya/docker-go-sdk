@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
@@ -61,6 +62,10 @@ func (st *healthStrategyTarget) CopyFromContainer(_ context.Context, _ string) (
 	return nil, errors.New("not implemented")
 }
 
+func (st *healthStrategyTarget) Logger() *slog.Logger {
+	return slog.Default()
+}
+
 // TestWaitForHealthTimesOutForUnhealthy confirms that an unhealthy container will eventually
 // time out.
 func TestWaitForHealthTimesOutForUnhealthy(t *testing.T) {
@@ -70,7 +75,7 @@ func TestWaitForHealthTimesOutForUnhealthy(t *testing.T) {
 			Health:  &container.Health{Status: types.Unhealthy},
 		},
 	}
-	wg := NewHealthStrategy().WithStartupTimeout(100 * time.Millisecond)
+	wg := NewHealthStrategy().WithTimeout(100 * time.Millisecond)
 	err := wg.WaitUntilReady(context.Background(), target)
 
 	require.Error(t, err)
@@ -85,7 +90,7 @@ func TestWaitForHealthSucceeds(t *testing.T) {
 			Health:  &container.Health{Status: types.Healthy},
 		},
 	}
-	wg := NewHealthStrategy().WithStartupTimeout(100 * time.Millisecond)
+	wg := NewHealthStrategy().WithTimeout(100 * time.Millisecond)
 	err := wg.WaitUntilReady(context.Background(), target)
 
 	require.NoError(t, err)
@@ -101,7 +106,7 @@ func TestWaitForHealthWithNil(t *testing.T) {
 		},
 	}
 	wg := NewHealthStrategy().
-		WithStartupTimeout(500 * time.Millisecond).
+		WithTimeout(500 * time.Millisecond).
 		WithPollInterval(100 * time.Millisecond)
 
 	go func(target *healthStrategyTarget) {
@@ -124,7 +129,7 @@ func TestWaitFailsForNilHealth(t *testing.T) {
 		},
 	}
 	wg := NewHealthStrategy().
-		WithStartupTimeout(500 * time.Millisecond).
+		WithTimeout(500 * time.Millisecond).
 		WithPollInterval(100 * time.Millisecond)
 
 	err := wg.WaitUntilReady(context.Background(), target)
@@ -139,7 +144,7 @@ func TestWaitForHealthFailsDueToOOMKilledContainer(t *testing.T) {
 		},
 	}
 	wg := NewHealthStrategy().
-		WithStartupTimeout(500 * time.Millisecond).
+		WithTimeout(500 * time.Millisecond).
 		WithPollInterval(100 * time.Millisecond)
 
 	err := wg.WaitUntilReady(context.Background(), target)
@@ -155,7 +160,7 @@ func TestWaitForHealthFailsDueToExitedContainer(t *testing.T) {
 		},
 	}
 	wg := NewHealthStrategy().
-		WithStartupTimeout(500 * time.Millisecond).
+		WithTimeout(500 * time.Millisecond).
 		WithPollInterval(100 * time.Millisecond)
 
 	err := wg.WaitUntilReady(context.Background(), target)
@@ -170,7 +175,7 @@ func TestWaitForHealthFailsDueToUnexpectedContainerStatus(t *testing.T) {
 		},
 	}
 	wg := NewHealthStrategy().
-		WithStartupTimeout(500 * time.Millisecond).
+		WithTimeout(500 * time.Millisecond).
 		WithPollInterval(100 * time.Millisecond)
 
 	err := wg.WaitUntilReady(context.Background(), target)
