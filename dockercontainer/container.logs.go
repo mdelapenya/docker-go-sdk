@@ -147,6 +147,8 @@ func (c *Container) copyLogsTimeout(stdout, stderr io.Writer, options *container
 // followOutput adds a LogConsumer to be sent logs from the container's
 // STDOUT and STDERR
 func (c *Container) followOutput(consumer LogConsumer) {
+	c.consumersMutex.Lock()
+	defer c.consumersMutex.Unlock()
 	c.consumers = append(c.consumers, consumer)
 }
 
@@ -213,9 +215,15 @@ func (c *Container) startLogProduction(ctx context.Context, opts ...LogProductio
 		c.logProductionTimeout = &maxLogProductionTimeout
 	}
 
+	// Get a snapshot of current consumers
+	c.consumersMutex.RLock()
+	consumers := make([]LogConsumer, len(c.consumers))
+	copy(consumers, c.consumers)
+	c.consumersMutex.RUnlock()
+
 	// Setup the log writers.
-	stdout := newLogConsumerWriter(StdoutLog, c.consumers)
-	stderr := newLogConsumerWriter(StderrLog, c.consumers)
+	stdout := newLogConsumerWriter(StdoutLog, consumers)
+	stderr := newLogConsumerWriter(StderrLog, consumers)
 
 	// Setup the log production context which will be used to stop the log production.
 	c.logProductionCtx, c.logProductionCancel = context.WithCancelCause(ctx)
@@ -243,19 +251,26 @@ func (c *Container) stopLogProduction() error {
 	// Signal the log production to stop.
 	c.logProductionCancel(errLogProductionStop)
 
-	if err := context.Cause(c.logProductionCtx); err != nil {
-		switch {
-		case errors.Is(err, errLogProductionStop):
-			// Log production was stopped.
-			return nil
-		case errors.Is(err, context.DeadlineExceeded),
-			errors.Is(err, context.Canceled):
-			// Parent context is done.
-			return nil
-		default:
-			return err
+	// Wait for the log producer to finish with timeout
+	select {
+	case <-c.logProductionCtx.Done():
+		// Check the context cause after the context is done
+		if err := context.Cause(c.logProductionCtx); err != nil {
+			switch {
+			case errors.Is(err, errLogProductionStop):
+				// Log production was stopped normally.
+				return nil
+			case errors.Is(err, context.DeadlineExceeded),
+				errors.Is(err, context.Canceled):
+				// Parent context is done.
+				return nil
+			default:
+				// Unexpected error
+				return err
+			}
 		}
+		return nil
+	case <-time.After(maxLogProductionTimeout):
+		return fmt.Errorf("timeout waiting for log producer to stop: %w", context.Cause(c.logProductionCtx))
 	}
-
-	return nil
 }
