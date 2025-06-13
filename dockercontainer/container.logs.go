@@ -40,11 +40,10 @@ func (c *Container) Logs(ctx context.Context) (io.ReadCloser, error) {
 		ShowStderr: true,
 	}
 
-	rc, err := c.dockerClient.ContainerLogs(ctx, c.ID, options)
+	rc, err := c.dockerClient.ContainerLogs(ctx, c.ID(), options)
 	if err != nil {
 		return nil, err
 	}
-	defer rc.Close()
 
 	pr, pw := io.Pipe()
 	r := bufio.NewReader(rc)
@@ -103,7 +102,7 @@ func (c *Container) GetLogProductionErrorChannel() <-chan error {
 
 // copyLogs copies logs from the container to stdout and stderr.
 func (c *Container) copyLogs(ctx context.Context, stdout, stderr io.Writer, options container.LogsOptions) error {
-	rc, err := c.dockerClient.ContainerLogs(ctx, c.ID, options)
+	rc, err := c.dockerClient.ContainerLogs(ctx, c.ID(), options)
 	if err != nil {
 		return fmt.Errorf("container logs: %w", err)
 	}
@@ -147,8 +146,6 @@ func (c *Container) copyLogsTimeout(stdout, stderr io.Writer, options *container
 // followOutput adds a LogConsumer to be sent logs from the container's
 // STDOUT and STDERR
 func (c *Container) followOutput(consumer LogConsumer) {
-	c.consumersMutex.Lock()
-	defer c.consumersMutex.Unlock()
 	c.consumers = append(c.consumers, consumer)
 }
 
@@ -216,10 +213,8 @@ func (c *Container) startLogProduction(ctx context.Context, opts ...LogProductio
 	}
 
 	// Get a snapshot of current consumers
-	c.consumersMutex.RLock()
 	consumers := make([]LogConsumer, len(c.consumers))
 	copy(consumers, c.consumers)
-	c.consumersMutex.RUnlock()
 
 	// Setup the log writers.
 	stdout := newLogConsumerWriter(StdoutLog, consumers)
@@ -230,13 +225,11 @@ func (c *Container) startLogProduction(ctx context.Context, opts ...LogProductio
 
 	// We capture context cancel function to avoid data race with multiple
 	// calls to startLogProduction.
-	go func(cancel context.CancelCauseFunc) {
-		// Ensure the context is cancelled when log productions completes
-		// so that GetLogProductionErrorChannel functions correctly.
-		defer cancel(nil)
+	go func() {
+		defer c.logProductionCancel(nil)
 
 		c.logProducer(stdout, stderr)
-	}(c.logProductionCancel)
+	}()
 
 	return nil
 }
