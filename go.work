@@ -1,10 +1,10 @@
 go 1.23.6
 
 use (
-	./dockerclient
-	./dockerconfig
-	./dockercontainer
-	./dockercontext
-	./dockerimage
-	./dockernetwork
+	./client
+	./config
+	./container
+	./context
+	./image
+	./network
 )

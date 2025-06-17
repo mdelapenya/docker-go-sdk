@@ -32,10 +32,10 @@ go get github.com/docker/go-sdk
 
 ## Usage
 
-### dockerclient
+### client
 
 ```go
-cli, err := dockerclient.New(context.Background())
+cli, err := client.New(context.Background())
 if err != nil {
     log.Fatalf("failed to create docker client: %v", err)
 }
@@ -44,10 +44,10 @@ if err != nil {
 defer cli.Close()
 ```
 
-### dockerconfig
+### config
 
 ```go
-cfg, err := dockerconfig.Load()
+cfg, err := config.Load()
 if err != nil {
     log.Fatalf("failed to load config: %v", err)
 }
@@ -58,46 +58,73 @@ if ok {
 }
 ```
 
-### dockercontainer
+### container
 
 ```go
-ctr, err := dockercontainer.Run(context.Background(),
-    dockercontainer.WithImage("nginx:alpine"),
-    dockercontainer.WithImagePlatform("linux/amd64"),
-    dockercontainer.WithAlwaysPull(),
-    dockercontainer.WithExposedPorts("80/tcp"),
-    dockercontainer.WithWaitStrategy(wait.ForListeningPort("80/tcp")),
+ctr, err := container.Run(context.Background(),
+    container.WithImage("nginx:alpine"),
+    container.WithImagePlatform("linux/amd64"),
+    container.WithAlwaysPull(),
+    container.WithExposedPorts("80/tcp"),
+    container.WithWaitStrategy(wait.ForListeningPort("80/tcp")),
 )
 if err != nil {
     log.Fatalf("failed to run container: %v", err)
 }
 
-dockercontainer.TerminateContainer(ctr)
+container.Terminate(ctr)
 ```
 
-### dockercontext
+### context
 
 ```go
-dockerHost, err := dockercontext.CurrentDockerHost()
+current, err := context.Current()
+if err != nil {
+    log.Fatalf("failed to get current docker context: %v", err)
+}
+
+fmt.Printf("current docker context: %s", current)
+
+dockerHost, err := context.CurrentDockerHost()
 if err != nil {
     log.Fatalf("failed to get current docker host: %v", err)
 }
+fmt.Printf("current docker host: %s", dockerHost)
 ```
 
-### dockerimage
+### image
 
 ```go
-err := dockerimage.Pull(ctx, mockImageClient, "someTag", image.PullOptions{})
+import (
+	"context"
+
+    apiimage "github.com/docker/docker/api/types/image"
+	"github.com/docker/go-sdk/client"
+	"github.com/docker/go-sdk/image"
+)
+
+ctx := context.Background()
+dockerClient, err := client.New(ctx)
+if err != nil {
+    log.Fatalf("failed to create docker client: %v", err)
+}
+defer dockerClient.Close()
+
+err = image.Pull(ctx,
+    "nginx:alpine",
+    image.WithPullClient(dockerClient),
+    image.WithPullOptions(apiimage.PullOptions{}),
+)
 if err != nil {
     log.Fatalf("failed to pull image: %v", err)
 }
 
 ```
 
-### dockernetwork
+### network
 
 ```go
-nw, err := dockernetwork.New(ctx)
+nw, err := network.New(ctx)
 if err != nil {
     log.Fatalf("failed to create network: %v", err)
 }
