@@ -45,6 +45,24 @@ func NewClientOption(f func(*Client) error) ClientOption {
 	return funcOpt(f)
 }
 
+// WithDockerHost returns a client option that sets the docker host for the client.
+func WithDockerHost(dockerHost string) ClientOption {
+	return NewClientOption(func(c *Client) error {
+		c.dockerHost = dockerHost
+		return nil
+	})
+}
+
+// WithDockerContext returns a client option that sets the docker context for the client.
+// If set, the client will use the docker context to determine the docker host.
+// If used in combination with [WithDockerHost], the host in the context will take precedence.
+func WithDockerContext(dockerContext string) ClientOption {
+	return NewClientOption(func(c *Client) error {
+		c.dockerContext = dockerContext
+		return nil
+	})
+}
+
 // WithExtraHeaders returns a client option that sets the extra headers for the client.
 func WithExtraHeaders(headers map[string]string) ClientOption {
 	return NewClientOption(func(c *Client) error {

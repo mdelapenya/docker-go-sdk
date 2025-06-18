@@ -35,11 +35,7 @@ func Run(ctx context.Context, opts ...ContainerCustomizer) (*Container, error) {
 
 	if def.dockerClient == nil {
 		// use the default docker client
-		cli, err := client.New(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("new docker client: %w", err)
-		}
-		def.dockerClient = cli
+		def.dockerClient = client.DefaultClient
 	}
 
 	env := []string{}
@@ -154,10 +150,14 @@ func Run(ctx context.Context, opts ...ContainerCustomizer) (*Container, error) {
 		lifecycleHooks: def.lifecycleHooks,
 	}
 
+	// Note: `ctr.dockerClient` is the same instance as `def.dockerClient`.
+	// The switch is intentional to emphasize that operations are now being performed
+	// on the container object (`ctr`) rather than the definition object (`def`).
+
 	// If there is more than one network specified in the request attach newly created container to them one by one
 	if len(def.networks) > 1 {
 		for _, n := range def.networks[1:] {
-			nwInspect, err := def.dockerClient.NetworkInspect(ctx, n, apinetwork.InspectOptions{
+			nwInspect, err := ctr.dockerClient.NetworkInspect(ctx, n, apinetwork.InspectOptions{
 				Verbose: true,
 			})
 			if err != nil {
@@ -167,7 +167,7 @@ func Run(ctx context.Context, opts ...ContainerCustomizer) (*Container, error) {
 			endpointSetting := apinetwork.EndpointSettings{
 				Aliases: def.networkAliases[n],
 			}
-			err = def.dockerClient.NetworkConnect(ctx, nwInspect.ID, resp.ID, &endpointSetting)
+			err = ctr.dockerClient.NetworkConnect(ctx, nwInspect.ID, resp.ID, &endpointSetting)
 			if err != nil {
 				return ctr, fmt.Errorf("network connect: %w", err)
 			}

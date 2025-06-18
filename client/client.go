@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"path/filepath"
 	"time"
 
@@ -32,9 +33,13 @@ var (
 
 	defaultHealthCheck = func(ctx context.Context) func(c *Client) error {
 		return func(c *Client) error {
+			dockerClient, err := c.Client()
+			if err != nil {
+				return fmt.Errorf("docker client: %w", err)
+			}
 			var pingErr error
 			for i := range 3 {
-				if _, pingErr = c.Ping(ctx); pingErr == nil {
+				if _, pingErr = dockerClient.Ping(ctx); pingErr == nil {
 					return nil
 				}
 				select {
@@ -67,50 +72,54 @@ var (
 //
 // The client is safe for concurrent use by multiple goroutines.
 func New(ctx context.Context, options ...ClientOption) (*Client, error) {
-	client := &Client{
+	c := &Client{
 		healthCheck: defaultHealthCheck,
 	}
 	for _, opt := range options {
-		if err := opt.Apply(client); err != nil {
+		if err := opt.Apply(c); err != nil {
 			return nil, fmt.Errorf("apply option: %w", err)
 		}
 	}
 
-	if err := client.initOnce(ctx); err != nil {
+	if err := c.init(ctx); err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
 
-	if err := client.healthCheck(ctx)(client); err != nil {
+	if err := c.healthCheck(ctx)(c); err != nil {
 		return nil, fmt.Errorf("health check: %w", err)
 	}
 
-	return client, nil
+	return c, nil
+}
+
+// init initializes the client.
+// This method is safe for concurrent use by multiple goroutines.
+func (c *Client) init(ctx context.Context) error {
+	c.once.Do(func() {
+		err := c.initOnce(ctx)
+		if err != nil {
+			c.err = err
+		}
+	})
+	return c.err
 }
 
 // initOnce initializes the client once.
 // This method is safe for concurrent use by multiple goroutines.
 func (c *Client) initOnce(_ context.Context) error {
-	c.mtx.RLock()
-	if c.Client != nil || c.err != nil {
-		err := c.err
-		c.mtx.RUnlock()
-		return err
-	}
-	c.mtx.RUnlock()
-
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-
-	if c.log == nil {
-		c.log = defaultLogger
+	if c.dockerClient != nil || c.err != nil {
+		return c.err
 	}
 
-	dockerHost, err := dockercontext.CurrentDockerHost()
-	if err != nil {
-		return fmt.Errorf("current docker host: %w", err)
+	// Set the default values for the client:
+	// - log
+	// - dockerHost
+	// - currentContext
+	if c.err = c.defaultValues(); c.err != nil {
+		return fmt.Errorf("default values: %w", c.err)
 	}
 
-	if c.cfg, c.err = newConfig(dockerHost); c.err != nil {
+	if c.cfg, c.err = newConfig(c.dockerHost); c.err != nil {
 		return c.err
 	}
 
@@ -135,18 +144,56 @@ func (c *Client) initOnce(_ context.Context) error {
 	}
 
 	httpHeaders := make(map[string]string)
-	for k, v := range c.extraHeaders {
-		httpHeaders[k] = v
-	}
+	maps.Copy(httpHeaders, c.extraHeaders)
 
 	// Append the SDK headers last.
 	httpHeaders[headerUserAgent] = defaultUserAgent
 
 	opts = append(opts, client.WithHTTPHeaders(httpHeaders))
 
-	if c.Client, c.err = client.NewClientWithOpts(opts...); c.err != nil {
+	if c.dockerClient, c.err = client.NewClientWithOpts(opts...); c.err != nil {
 		c.err = fmt.Errorf("new client: %w", c.err)
 		return c.err
+	}
+
+	// Because each encountered error is immediately returned, it's safe to set the error to nil.
+	c.err = nil
+	return nil
+}
+
+// defaultValues sets the default values for the client.
+// If no logger is provided, the default one is used.
+// If no docker host is provided and no docker context is provided, the current docker host and context are used.
+// If no docker host is provided but a docker context is provided, the docker host from the context is used.
+// If a docker host is provided, it is used as is.
+func (c *Client) defaultValues() error {
+	if c.log == nil {
+		c.log = defaultLogger
+	}
+
+	if c.dockerHost == "" && c.dockerContext == "" {
+		currentDockerHost, err := dockercontext.CurrentDockerHost()
+		if err != nil {
+			return fmt.Errorf("current docker host: %w", err)
+		}
+		currentContext, err := dockercontext.Current()
+		if err != nil {
+			return fmt.Errorf("current context: %w", err)
+		}
+
+		c.dockerHost = currentDockerHost
+		c.dockerContext = currentContext
+
+		return nil
+	}
+
+	if c.dockerContext != "" {
+		dockerHost, err := dockercontext.DockerHostFromContext(c.dockerContext)
+		if err != nil {
+			return fmt.Errorf("docker host from context: %w", err)
+		}
+
+		c.dockerHost = dockerHost
 	}
 
 	return nil
@@ -158,24 +205,16 @@ func (c *Client) Close() error {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
-	if c.Client == nil {
+	if c.dockerClient == nil {
 		return nil
 	}
 
 	// Store the error before clearing the client
-	err := c.Client.Close()
+	err := c.dockerClient.Close()
 
 	// Clear the client after closing to prevent use-after-close issues
 	c.dockerInfo = system.Info{}
 	c.dockerInfoSet = false
 
 	return err
-}
-
-// Logger returns the logger for the client.
-// This method is safe for concurrent use by multiple goroutines.
-func (c *Client) Logger() *slog.Logger {
-	c.mtx.RLock()
-	defer c.mtx.RUnlock()
-	return c.log
 }

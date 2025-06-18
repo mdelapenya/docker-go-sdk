@@ -14,6 +14,12 @@ import (
 	dockercontext "github.com/docker/go-sdk/context"
 )
 
+var noopHealthCheck = func(_ context.Context) func(c *client.Client) error {
+	return func(_ *client.Client) error {
+		return nil
+	}
+}
+
 func TestNew(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		cli, err := client.New(context.Background())
@@ -25,12 +31,30 @@ func TestNew(t *testing.T) {
 		require.NotNil(t, info)
 	})
 
+	t.Run("success/info-cached", func(t *testing.T) {
+		cli, err := client.New(context.Background())
+		require.NoError(t, err)
+		require.NotNil(t, cli)
+
+		info1, err := cli.Info(context.Background())
+		require.NoError(t, err)
+		require.NotNil(t, info1)
+
+		info2, err := cli.Info(context.Background())
+		require.NoError(t, err)
+		require.NotNil(t, info2)
+
+		require.Equal(t, info1, info2)
+	})
+
 	t.Run("client", func(t *testing.T) {
 		cli, err := client.New(context.Background())
 		require.NoError(t, err)
 		require.NotNil(t, cli)
 
-		require.NotNil(t, cli.Client)
+		dockerClient, err := cli.Client()
+		require.NoError(t, err)
+		require.NotNil(t, dockerClient)
 	})
 
 	t.Run("close", func(t *testing.T) {
@@ -84,12 +108,6 @@ func TestNew(t *testing.T) {
 	})
 
 	t.Run("healthcheck/noop", func(t *testing.T) {
-		noopHealthCheck := func(_ context.Context) func(c *client.Client) error {
-			return func(_ *client.Client) error {
-				return nil
-			}
-		}
-
 		cli, err := client.New(context.Background(), client.WithHealthCheck(noopHealthCheck))
 		require.NoError(t, err)
 		require.NotNil(t, cli)
@@ -134,11 +152,45 @@ func TestNew(t *testing.T) {
 	})
 }
 
+func TestDefaultClient(t *testing.T) {
+	cli := client.DefaultClient
+
+	t.Run("success", func(t *testing.T) {
+		info, err := cli.Info(context.Background())
+		require.NoError(t, err)
+		require.NotNil(t, info)
+	})
+
+	t.Run("success/info-cached", func(t *testing.T) {
+		info1, err := cli.Info(context.Background())
+		require.NoError(t, err)
+		require.NotNil(t, info1)
+
+		info2, err := cli.Info(context.Background())
+		require.NoError(t, err)
+		require.NotNil(t, info2)
+
+		require.Equal(t, info1, info2)
+	})
+
+	t.Run("client", func(t *testing.T) {
+		dockerClient, err := cli.Client()
+		require.NoError(t, err)
+		require.NotNil(t, dockerClient)
+	})
+
+	t.Run("close", func(t *testing.T) {
+		// multiple calls to Close() are idempotent
+		require.NoError(t, cli.Close())
+		require.NoError(t, cli.Close())
+	})
+}
+
 func TestClientConcurrentAccess(t *testing.T) {
 	t.Run("concurrent-client-close", func(t *testing.T) {
-		client, err := client.New(context.Background())
+		cli, err := client.New(context.Background())
 		require.NoError(t, err)
-		require.NotNil(t, client)
+		require.NotNil(t, cli)
 
 		const goroutines = 100
 		wg := sync.WaitGroup{}
@@ -155,15 +207,17 @@ func TestClientConcurrentAccess(t *testing.T) {
 
 				if id%2 == 0 {
 					// Even IDs call Client()
-					c := client.Client
+					dockerClient, err := cli.Client()
+					require.NoError(t, err)
+					require.NotNil(t, dockerClient)
 					// Client() might return nil if the client was closed by another goroutine
 					// This is expected behavior
-					if c != nil {
-						require.NotNil(t, c)
+					if dockerClient != nil {
+						require.NotNil(t, dockerClient)
 					}
 				} else {
 					// Odd IDs call Close()
-					err := client.Close()
+					err := cli.Close()
 					// Close() is idempotent, so it's okay to call it multiple times
 					require.NoError(t, err)
 				}
