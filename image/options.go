@@ -1,8 +1,9 @@
 package image
 
 import (
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+
 	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/client"
 )
 
 // PullOption is a function that configures the pull options.
@@ -30,11 +31,35 @@ func WithPullOptions(imagePullOptions image.PullOptions) PullOption {
 }
 
 // SaveOption is a function that configures the save options.
+type RemoveOption func(*removeOptions) error
+
+type removeOptions struct {
+	removeClient  ImageRemoveClient
+	removeOptions image.RemoveOptions
+}
+
+// WithRemoveClient sets the remove client used to remove the image.
+func WithRemoveClient(removeClient ImageRemoveClient) RemoveOption {
+	return func(opts *removeOptions) error {
+		opts.removeClient = removeClient
+		return nil
+	}
+}
+
+// WithRemoveOptions sets the remove options used to remove the image.
+func WithRemoveOptions(options image.RemoveOptions) RemoveOption {
+	return func(opts *removeOptions) error {
+		opts.removeOptions = options
+		return nil
+	}
+}
+
+// SaveOption is a function that configures the save options.
 type SaveOption func(*saveOptions) error
 
 type saveOptions struct {
-	saveClient  ImageSaveClient
-	saveOptions []client.ImageSaveOption
+	saveClient ImageSaveClient
+	platforms  []ocispec.Platform
 }
 
 // WithSaveClient sets the save client used to save the image.
@@ -45,10 +70,10 @@ func WithSaveClient(saveClient ImageSaveClient) SaveOption {
 	}
 }
 
-// WithSaveOptions sets the save options used to save the image.
-func WithSaveOptions(options ...client.ImageSaveOption) SaveOption {
+// WithPlatforms sets the platforms to save the image from.
+func WithPlatforms(platforms ...ocispec.Platform) SaveOption {
 	return func(opts *saveOptions) error {
-		opts.saveOptions = options
+		opts.platforms = platforms
 		return nil
 	}
 }
