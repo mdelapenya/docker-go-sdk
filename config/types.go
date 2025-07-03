@@ -1,5 +1,7 @@
 package config
 
+import "sync/atomic"
+
 const (
 	// EnvOverrideDir is the name of the environment variable that can be
 	// used to override the location of the client configuration files (~/.docker).
@@ -43,6 +45,9 @@ type Config struct {
 	CurrentContext       string                 `json:"currentContext,omitempty"`
 	CLIPluginsExtraDirs  []string               `json:"cliPluginsExtraDirs,omitempty"`
 	Aliases              map[string]string      `json:"aliases,omitempty"`
+
+	// Cache pointer (unexported, not included in JSON, safe to copy)
+	cache atomic.Value // stores *authConfigCache
 }
 
 // ProxyConfig contains proxy configuration settings.
