@@ -3,6 +3,9 @@ package container
 import (
 	"bufio"
 	"context"
+	"encoding/binary"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 
@@ -17,8 +20,6 @@ func (c *Container) Logger() *slog.Logger {
 // Logs will fetch both STDOUT and STDERR from the current container. Returns a
 // ReadCloser and leaves it up to the caller to extract what it wants.
 func (c *Container) Logs(ctx context.Context) (io.ReadCloser, error) {
-	const streamHeaderSize = 8
-
 	options := container.LogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
@@ -29,42 +30,76 @@ func (c *Container) Logs(ctx context.Context) (io.ReadCloser, error) {
 		return nil, err
 	}
 
+	// Check if the container has TTY enabled, to determine the log format
+	inspect, err := c.Inspect(ctx)
+	if err != nil {
+		rc.Close()
+		return nil, fmt.Errorf("inspect container: %w", err)
+	}
+
+	// If TTY is enabled, logs are not multiplexed - return them directly
+	if inspect.Config.Tty {
+		return rc, nil
+	}
+
+	// TTY is disabled, logs are multiplexed with stream headers - parse them
+	return c.parseMultiplexedLogs(rc), nil
+}
+
+// parseMultiplexedLogs handles the multiplexed log format used when TTY is disabled
+func (c *Container) parseMultiplexedLogs(rc io.ReadCloser) io.ReadCloser {
+	const streamHeaderSize = 8
+
 	pr, pw := io.Pipe()
 	r := bufio.NewReader(rc)
 
 	go func() {
-		lineStarted := true
-		for err == nil {
-			line, isPrefix, err := r.ReadLine()
+		defer rc.Close()
 
-			if lineStarted && len(line) >= streamHeaderSize {
-				line = line[streamHeaderSize:] // trim stream header
-				lineStarted = false
-			}
-			if !isPrefix {
-				lineStarted = true
+		var closeErr error
+		defer func() {
+			if r := recover(); r != nil {
+				closeErr = fmt.Errorf("panic in log processing: %v", r)
 			}
 
-			_, errW := pw.Write(line)
-			if errW != nil {
-				return
-			}
-
-			if !isPrefix {
-				_, errW := pw.Write([]byte("\n"))
-				if errW != nil {
-					return
+			if closeErr != nil && !errors.Is(closeErr, io.EOF) {
+				// Real error, close the pipe with the error
+				if err := pw.CloseWithError(closeErr); err != nil {
+					c.logger.Debug("failed to close pipe writer with error", "error", err, "original", closeErr)
+				}
+			} else {
+				// No error or EOF, close the pipe normally
+				if err := pw.Close(); err != nil {
+					c.logger.Debug("failed to close pipe writer", "error", err)
 				}
 			}
+		}()
 
-			if err != nil {
-				_ = pw.CloseWithError(err)
-				return
+		// Process the Docker multiplexed stream format which includes:
+		// - Byte 0: Stream type (1 = stdout, 2 = stderr)
+		// - Bytes 1-3: Reserved
+		// - Bytes 4-7: Frame size (big-endian uint32)
+		streamHeader := make([]byte, streamHeaderSize)
+
+		for {
+			// Read complete stream header - ensures all 8 bytes are read
+			if _, err := io.ReadFull(r, streamHeader); err != nil {
+				closeErr = err
+				break
+			}
+
+			// Extract frame size from header
+			frameSize := binary.BigEndian.Uint32(streamHeader[4:])
+
+			// Copy frame data
+			if _, err := io.CopyN(pw, r, int64(frameSize)); err != nil {
+				closeErr = err
+				break
 			}
 		}
 	}()
 
-	return pr, nil
+	return pr
 }
 
 // printLogs is a helper function that will print the logs of a Docker container
