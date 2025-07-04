@@ -50,6 +50,61 @@ func TestExtractDockerHost(t *testing.T) {
 	})
 }
 
+func TestInspect(t *testing.T) {
+	tmpDir := t.TempDir()
+	setupTestContext(t, tmpDir, "test", metadata{
+		Name: "test",
+		Context: &dockerContext{
+			Description: "test context",
+		},
+		Endpoints: map[string]*endpoint{
+			"docker": {
+				Host: "tcp://localhost:2375",
+			},
+		},
+	})
+	t.Run("inspect/1", func(tt *testing.T) {
+		ctx, err := Inspect("test", tmpDir)
+		require.NoError(tt, err)
+		require.Equal(tt, "test", ctx.Name)
+		require.Equal(tt, "test context", ctx.Context.Description)
+		require.Equal(tt, "tcp://localhost:2375", ctx.Endpoints["docker"].Host)
+		require.False(tt, ctx.Endpoints["docker"].SkipTLSVerify)
+	})
+
+	t.Run("inspect/not-found", func(tt *testing.T) {
+		ctx, err := Inspect("not-found", tmpDir)
+		require.ErrorIs(tt, err, ErrDockerContextNotFound)
+		require.Empty(tt, ctx)
+	})
+}
+
+func TestList(t *testing.T) {
+	t.Run("list/1", func(tt *testing.T) {
+		tmpDir := t.TempDir()
+
+		want := metadata{
+			Name: "test",
+			Context: &dockerContext{
+				Description: "test context",
+				Fields:      map[string]any{"test": true},
+			},
+			Endpoints: map[string]*endpoint{
+				"docker": {
+					Host:          "tcp://localhost:2375",
+					SkipTLSVerify: true,
+				},
+			},
+		}
+
+		setupTestContext(tt, tmpDir, "test", want)
+
+		got, err := List(tmpDir)
+		require.NoError(tt, err)
+		require.Equal(tt, []string{"test"}, got)
+	})
+}
+
 func TestStore_load(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		tmpDir := t.TempDir()
@@ -395,9 +450,9 @@ func requireDockerHost(t *testing.T, contextName string, meta metadata) string {
 
 	setupTestContext(t, tmpDir, contextName, meta)
 
-	host, err := ExtractDockerHost(contextName, tmpDir)
+	ctx, err := Inspect(contextName, tmpDir)
 	require.NoError(t, err)
-	return host
+	return ctx.Endpoints["docker"].Host
 }
 
 // requireDockerHostInPath creates a context at a specific path and verifies host extraction
@@ -407,9 +462,9 @@ func requireDockerHostInPath(t *testing.T, contextName, path string, meta metada
 
 	setupTestContext(t, tmpDir, path, meta)
 
-	host, err := ExtractDockerHost(contextName, tmpDir)
+	ctx, err := Inspect(contextName, tmpDir)
 	require.NoError(t, err)
-	return host
+	return ctx.Endpoints["docker"].Host
 }
 
 // requireDockerHostError creates a context and verifies expected error
@@ -419,21 +474,21 @@ func requireDockerHostError(t *testing.T, contextName string, meta metadata, wan
 
 	setupTestContext(t, tmpDir, contextName, meta)
 
-	_, err := ExtractDockerHost(contextName, tmpDir)
+	_, err := Inspect(contextName, tmpDir)
 	require.ErrorIs(t, err, wantErr)
 }
 
 // setupTestContext creates a test context file in the specified location
-func setupTestContext(t *testing.T, root, relPath string, meta metadata) {
-	t.Helper()
+func setupTestContext(tb testing.TB, root, relPath string, meta metadata) {
+	tb.Helper()
 
 	contextDir := filepath.Join(root, relPath)
-	require.NoError(t, os.MkdirAll(contextDir, 0o755))
+	require.NoError(tb, os.MkdirAll(contextDir, 0o755))
 
 	data, err := json.Marshal(meta)
-	require.NoError(t, err)
+	require.NoError(tb, err)
 
-	require.NoError(t, os.WriteFile(
+	require.NoError(tb, os.WriteFile(
 		filepath.Join(contextDir, metaFile),
 		data,
 		0o644,

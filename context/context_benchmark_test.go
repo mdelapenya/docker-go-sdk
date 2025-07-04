@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func BenchmarkContextOperations(b *testing.B) {
+func BenchmarkCurrentContext(b *testing.B) {
 	SetupTestDockerContexts(b, 1, 3) // current context is context1
 
 	b.Run("current-context", func(b *testing.B) {
@@ -83,9 +83,20 @@ func BenchmarkContextOperations(b *testing.B) {
 			require.Equal(b, DefaultDockerHost, host)
 		}
 	})
+
+	b.Run("current-docker-host/not-found", func(b *testing.B) {
+		b.Setenv(EnvOverrideContext, "non-existent")
+		b.ResetTimer()
+		b.ReportAllocs()
+		for range b.N {
+			host, err := CurrentDockerHost()
+			require.Error(b, err)
+			require.Empty(b, host)
+		}
+	})
 }
 
-func BenchmarkContextList(b *testing.B) {
+func BenchmarkCurrentNestedContext(b *testing.B) {
 	SetupTestDockerContexts(b, 1, 3) // Creates 3 contexts at root level
 
 	metaDir, err := metaRoot()
@@ -115,15 +126,39 @@ func BenchmarkContextList(b *testing.B) {
 			require.Equal(b, "tcp://127.0.0.1:5", host)
 		}
 	})
+}
 
-	b.Run("current-docker-host/not-found", func(b *testing.B) {
-		b.Setenv(EnvOverrideContext, "non-existent")
+func BenchmarkContextList(b *testing.B) {
+	SetupTestDockerContexts(b, 1, 3) // Creates 3 contexts at root level
+
+	b.Run("context-list", func(b *testing.B) {
 		b.ResetTimer()
 		b.ReportAllocs()
 		for range b.N {
-			host, err := CurrentDockerHost()
-			require.Error(b, err)
-			require.Empty(b, host)
+			_, err := List()
+			require.NoError(b, err)
+		}
+	})
+}
+
+func BenchmarkContextInspect(b *testing.B) {
+	SetupTestDockerContexts(b, 1, 3) // Creates 3 contexts at root level
+
+	b.Run("context-inspect", func(b *testing.B) {
+		b.ResetTimer()
+		b.ReportAllocs()
+		for range b.N {
+			_, err := Inspect("context1")
+			require.NoError(b, err)
+		}
+	})
+
+	b.Run("context-inspect/not-found", func(b *testing.B) {
+		b.ResetTimer()
+		b.ReportAllocs()
+		for range b.N {
+			_, err := Inspect("non-existent")
+			require.ErrorIs(b, err, ErrDockerContextNotFound)
 		}
 	})
 }
