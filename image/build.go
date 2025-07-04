@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -26,12 +25,12 @@ func ArchiveBuildContext(dir string, dockerfile string) (r io.Reader, err error)
 	// always pass context as absolute path
 	abs, err := filepath.Abs(dir)
 	if err != nil {
-		return nil, fmt.Errorf("error getting absolute path: %w", err)
+		return nil, fmt.Errorf("absolute path: %w", err)
 	}
 
 	dockerIgnoreExists, excluded, err := ParseDockerIgnore(abs)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse docker ignore: %w", err)
 	}
 
 	includes := []string{".", dockerfile}
@@ -45,7 +44,7 @@ func ArchiveBuildContext(dir string, dockerfile string) (r io.Reader, err error)
 		&archive.TarOptions{ExcludePatterns: excluded, IncludeFiles: includes},
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("tar with options: %w", err)
 	}
 
 	return buildContext, nil
@@ -64,7 +63,7 @@ type ImageBuildClient interface {
 func BuildFromDir(ctx context.Context, dir string, dockerfile string, tag string, opts ...BuildOption) (string, error) {
 	archive, err := ArchiveBuildContext(dir, dockerfile)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("archive build context: %w", err)
 	}
 
 	buildOpts := build.ImageBuildOptions{
@@ -87,7 +86,6 @@ func Build(ctx context.Context, contextReader io.Reader, tag string, opts ...Bui
 	}
 
 	buildOpts := &buildOptions{
-		logWriter: os.Stdout,
 		opts: build.ImageBuildOptions{
 			Dockerfile: "Dockerfile",
 		},
@@ -154,7 +152,8 @@ func Build(ctx context.Context, contextReader io.Reader, tag string, opts ...Bui
 	}
 	defer resp.Body.Close()
 
-	output := buildOpts.logWriter
+	// use the bridge to log to the client logger
+	output := &loggerWriter{logger: buildOpts.buildClient.Logger()}
 
 	// Always process the output, even if it is not printed
 	// to ensure that errors during the build process are
