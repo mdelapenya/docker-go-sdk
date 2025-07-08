@@ -2,8 +2,10 @@ package container
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/go-sdk/client"
 	"github.com/docker/go-sdk/container/wait"
 )
@@ -57,6 +59,21 @@ func (c *Container) ShortID() string {
 	return c.shortID
 }
 
+// IsRunning returns the running state of the container.
+func (c *Container) IsRunning() bool {
+	return c.isRunning
+}
+
+// Running sets the running state of the container.
+func (c *Container) Running(b bool) {
+	c.isRunning = b
+}
+
+// WaitingFor returns the waiting strategy used by the container.
+func (c *Container) WaitingFor() wait.Strategy {
+	return c.waitingFor
+}
+
 // Host gets host (ip or name) of the docker daemon where the container port is exposed
 // Warning: this is based on your Docker host setting. Will fail if using an SSH tunnel
 func (c *Container) Host(ctx context.Context) (string, error) {
@@ -65,4 +82,25 @@ func (c *Container) Host(ctx context.Context) (string, error) {
 		return "", err
 	}
 	return host, nil
+}
+
+// FromResponse builds a container struct from the response of the Docker API
+func FromResponse(_ context.Context, response container.Summary) (*Container, error) {
+	exposedPorts := make([]string, len(response.Ports))
+	for i, port := range response.Ports {
+		exposedPorts[i] = fmt.Sprintf("%d/%s", port.PublicPort, port.Type)
+	}
+
+	ctr := &Container{
+		containerID:  response.ID,
+		shortID:      response.ID[:12],
+		image:        response.Image,
+		isRunning:    response.State == "running",
+		exposedPorts: exposedPorts,
+		lifecycleHooks: []LifecycleHooks{
+			DefaultLoggingHook,
+		},
+	}
+
+	return ctr, nil
 }
