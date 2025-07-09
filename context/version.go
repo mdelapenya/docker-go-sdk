@@ -1,7 +1,7 @@
 package context
 
 const (
-	version = "0.1.0-alpha007"
+	version = "0.1.0-alpha008"
 )
 
 // Version returns the version of the context package.
