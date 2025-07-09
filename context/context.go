@@ -6,11 +6,9 @@ package context
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/docker/go-sdk/config"
-	"github.com/docker/go-sdk/context/internal"
 )
 
 const (
@@ -36,89 +34,14 @@ const (
 
 	// metadataDir is the name of the directory containing the metadata
 	metadataDir = "meta"
+
+	// metaFile is the name of the file containing the context metadata
+	metaFile = "meta.json"
 )
 
-var (
-	// DefaultDockerHost is the default host to connect to the Docker socket.
-	// The actual value is platform-specific and defined in host_linux.go and host_windows.go.
-	DefaultDockerHost = ""
-
-	// ErrDockerHostNotSet is the error returned when the Docker host is not set in the Docker context
-	ErrDockerHostNotSet = internal.ErrDockerHostNotSet
-
-	// ErrDockerContextNotFound is the error returned when the Docker context is not found.
-	ErrDockerContextNotFound = internal.ErrDockerContextNotFound
-)
-
-// getContextFromEnv returns the context name from the environment variables.
-func getContextFromEnv() string {
-	if os.Getenv(EnvOverrideHost) != "" {
-		return DefaultContextName
-	}
-
-	if ctxName := os.Getenv(EnvOverrideContext); ctxName != "" {
-		return ctxName
-	}
-
-	return ""
-}
-
-// Current returns the current context name, based on
-// environment variables and the cli configuration file. It does not
-// validate if the given context exists or if it's valid.
-//
-// If the current context is not found, it returns the default context name.
-func Current() (string, error) {
-	// Check env vars first (clearer precedence)
-	if ctx := getContextFromEnv(); ctx != "" {
-		return ctx, nil
-	}
-
-	// Then check config
-	cfg, err := config.Load()
-	if err != nil {
-		if os.IsNotExist(err) {
-			return DefaultContextName, nil
-		}
-		return "", fmt.Errorf("load docker config: %w", err)
-	}
-
-	if cfg.CurrentContext != "" {
-		return cfg.CurrentContext, nil
-	}
-
-	return DefaultContextName, nil
-}
-
-// CurrentDockerHost returns the Docker host from the current Docker context.
-// For that, it traverses the directory structure of the Docker configuration directory,
-// looking for the current context and its Docker endpoint.
-//
-// If the current context is the default context, it returns the value of the
-// DOCKER_HOST environment variable.
-func CurrentDockerHost() (string, error) {
-	current, err := Current()
-	if err != nil {
-		return "", fmt.Errorf("current context: %w", err)
-	}
-
-	if current == DefaultContextName {
-		dockerHost := os.Getenv(EnvOverrideHost)
-		if dockerHost != "" {
-			return dockerHost, nil
-		}
-
-		return DefaultDockerHost, nil
-	}
-
-	ctx, err := Inspect(current)
-	if err != nil {
-		return "", fmt.Errorf("inspect context: %w", err)
-	}
-
-	// Inspect already validates that the docker endpoint is set
-	return ctx.Endpoints["docker"].Host, nil
-}
+// DefaultDockerHost is the default host to connect to the Docker socket.
+// The actual value is platform-specific and defined in host_linux.go and host_windows.go.
+var DefaultDockerHost = ""
 
 // DockerHostFromContext returns the Docker host from the given context.
 func DockerHostFromContext(ctxName string) (string, error) {
@@ -131,14 +54,17 @@ func DockerHostFromContext(ctxName string) (string, error) {
 	return ctx.Endpoints["docker"].Host, nil
 }
 
-// Inspect returns the description of the given context.
+// Inspect returns the given context.
+// It returns an error if the context is not found or if the docker endpoint is not set.
 func Inspect(ctxName string) (Context, error) {
 	metaRoot, err := metaRoot()
 	if err != nil {
 		return Context{}, fmt.Errorf("meta root: %w", err)
 	}
 
-	return internal.Inspect(ctxName, metaRoot)
+	s := &store{root: metaRoot}
+
+	return s.inspect(ctxName)
 }
 
 // List returns the list of contexts available in the Docker configuration.
@@ -148,7 +74,18 @@ func List() ([]string, error) {
 		return nil, fmt.Errorf("meta root: %w", err)
 	}
 
-	return internal.List(metaRoot)
+	s := &store{root: metaRoot}
+
+	contexts, err := s.list()
+	if err != nil {
+		return nil, fmt.Errorf("list contexts: %w", err)
+	}
+
+	names := make([]string, len(contexts))
+	for i, ctx := range contexts {
+		names[i] = ctx.Name
+	}
+	return names, nil
 }
 
 // metaRoot returns the root directory of the Docker context metadata.

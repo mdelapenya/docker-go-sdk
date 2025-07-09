@@ -1,4 +1,4 @@
-package internal
+package context
 
 import (
 	"encoding/json"
@@ -50,7 +50,7 @@ func TestExtractDockerHost(t *testing.T) {
 	})
 }
 
-func TestInspect(t *testing.T) {
+func TestStore_Inspect(t *testing.T) {
 	tmpDir := t.TempDir()
 	setupTestContext(t, tmpDir, "test", metadata{
 		Name: "test",
@@ -63,8 +63,11 @@ func TestInspect(t *testing.T) {
 			},
 		},
 	})
+
+	s := &store{root: tmpDir}
+
 	t.Run("inspect/1", func(tt *testing.T) {
-		ctx, err := Inspect("test", tmpDir)
+		ctx, err := s.inspect("test")
 		require.NoError(tt, err)
 		require.Equal(tt, "test", ctx.Name)
 		require.Equal(tt, "test context", ctx.Context.Description)
@@ -73,7 +76,7 @@ func TestInspect(t *testing.T) {
 	})
 
 	t.Run("inspect/not-found", func(tt *testing.T) {
-		ctx, err := Inspect("not-found", tmpDir)
+		ctx, err := s.inspect("not-found")
 		require.ErrorIs(tt, err, ErrDockerContextNotFound)
 		require.Empty(tt, ctx)
 	})
@@ -98,7 +101,7 @@ func TestInspect(t *testing.T) {
 			},
 		})
 
-		ctx, err := Inspect("ctx-with-fields", tmpDir)
+		ctx, err := s.inspect("ctx-with-fields")
 		require.NoError(tt, err)
 		require.Equal(tt, "ctx-with-fields", ctx.Name)
 		require.Equal(tt, "ctx with fields", ctx.Context.Description)
@@ -119,7 +122,7 @@ func TestInspect(t *testing.T) {
 	})
 }
 
-func TestList(t *testing.T) {
+func TestStore_List(t *testing.T) {
 	t.Run("list/1", func(tt *testing.T) {
 		tmpDir := t.TempDir()
 
@@ -142,9 +145,35 @@ func TestList(t *testing.T) {
 
 		setupTestContext(tt, tmpDir, "test", want)
 
-		got, err := List(tmpDir)
+		s := &store{root: tmpDir}
+
+		got, err := s.list()
 		require.NoError(tt, err)
-		require.Equal(tt, []string{"test"}, got)
+		require.Len(tt, got, 1)
+		require.Equal(tt, "test", got[0].Name)
+		require.Equal(tt, "test context", got[0].Context.Description)
+		require.Equal(tt, "tcp://localhost:2375", got[0].Endpoints["docker"].Host)
+		require.True(tt, got[0].Endpoints["docker"].SkipTLSVerify)
+
+		// Verify additional fields
+		wantTestField, _ := want.Context.Field("test")
+		gotTestField, exists := got[0].Context.Field("test")
+		require.True(tt, exists)
+		require.Equal(tt, wantTestField, gotTestField)
+	})
+
+	t.Run("list/empty", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		t.Setenv("HOME", tmpDir)
+		t.Setenv("USERPROFILE", tmpDir) // Windows support
+
+		tempMkdirAll(t, filepath.Join(tmpDir, ".docker"))
+
+		s := &store{root: tmpDir}
+
+		contexts, err := s.list()
+		require.NoError(t, err)
+		require.Empty(t, contexts)
 	})
 }
 
@@ -230,7 +259,6 @@ func TestStore_load(t *testing.T) {
 	t.Run("permission-denied", func(t *testing.T) {
 		if runtime.GOOS == "windows" {
 			t.Skip("permission tests not supported on Windows")
-			return
 		}
 
 		if os.Getuid() == 0 {
@@ -262,7 +290,6 @@ func TestStore_load(t *testing.T) {
 	t.Run("windows-file-access-error", func(t *testing.T) {
 		if runtime.GOOS != "windows" {
 			t.Skip("Windows-specific test")
-			return
 		}
 
 		tmpDir := t.TempDir()
@@ -364,7 +391,7 @@ func TestStore_list(t *testing.T) {
 		s := &store{root: nonExistentDir}
 
 		list, err := s.list()
-		require.NoError(t, err) // Should return empty list, not error
+		require.ErrorIs(t, err, os.ErrNotExist)
 		require.Empty(t, list)
 	})
 
@@ -631,7 +658,9 @@ func requireDockerHost(t *testing.T, contextName string, meta metadata) string {
 
 	setupTestContext(t, tmpDir, contextName, meta)
 
-	ctx, err := Inspect(contextName, tmpDir)
+	s := &store{root: tmpDir}
+
+	ctx, err := s.inspect(contextName)
 	require.NoError(t, err)
 	return ctx.Endpoints["docker"].Host
 }
@@ -643,7 +672,9 @@ func requireDockerHostInPath(t *testing.T, contextName, path string, meta metada
 
 	setupTestContext(t, tmpDir, path, meta)
 
-	ctx, err := Inspect(contextName, tmpDir)
+	s := &store{root: tmpDir}
+
+	ctx, err := s.inspect(contextName)
 	require.NoError(t, err)
 	return ctx.Endpoints["docker"].Host
 }
@@ -655,7 +686,9 @@ func requireDockerHostError(t *testing.T, contextName string, meta metadata, wan
 
 	setupTestContext(t, tmpDir, contextName, meta)
 
-	_, err := Inspect(contextName, tmpDir)
+	s := &store{root: tmpDir}
+
+	_, err := s.inspect(contextName)
 	require.ErrorIs(t, err, wantErr)
 }
 
