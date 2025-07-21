@@ -157,6 +157,43 @@ func (c *Config) AuthConfigForImage(image string) (string, AuthConfig, error) {
 	return ref.Registry, authConfig, nil
 }
 
+// ParseProxyConfig computes proxy configuration by retrieving the config for the provided host and
+// then checking this against any environment variables provided to the container
+func (c *Config) ParseProxyConfig(host string, runOpts map[string]*string) map[string]*string {
+	var cfgKey string
+
+	if _, ok := c.Proxies[host]; !ok {
+		cfgKey = "default"
+	} else {
+		cfgKey = host
+	}
+
+	conf := c.Proxies[cfgKey]
+	permitted := map[string]*string{
+		"HTTP_PROXY":  &conf.HTTPProxy,
+		"HTTPS_PROXY": &conf.HTTPSProxy,
+		"NO_PROXY":    &conf.NoProxy,
+		"FTP_PROXY":   &conf.FTPProxy,
+		"ALL_PROXY":   &conf.AllProxy,
+	}
+	m := runOpts
+	if m == nil {
+		m = make(map[string]*string)
+	}
+	for k := range permitted {
+		if *permitted[k] == "" {
+			continue
+		}
+		if _, ok := m[k]; !ok {
+			m[k] = permitted[k]
+		}
+		if _, ok := m[strings.ToLower(k)]; !ok {
+			m[strings.ToLower(k)] = permitted[k]
+		}
+	}
+	return m
+}
+
 // resolveAuthConfigForHostname performs the actual auth config resolution
 func (c *Config) resolveAuthConfigForHostname(hostname string) (AuthConfig, error) {
 	// Check credential helpers first
