@@ -7,7 +7,7 @@ replace github.com/docker/go-sdk/config => ../config
 require (
 	github.com/docker/cli v28.3.2+incompatible
 	github.com/docker/docker v28.3.2+incompatible
-	github.com/docker/go-sdk/config v0.0.0-00010101000000-000000000000
+	github.com/docker/go-sdk/config v0.1.0-alpha009
 	github.com/stretchr/testify v1.10.0
 )
 
