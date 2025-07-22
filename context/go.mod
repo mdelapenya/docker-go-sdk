@@ -5,7 +5,7 @@ go 1.23.6
 replace github.com/docker/go-sdk/config => ../config
 
 require (
-	github.com/docker/go-sdk/config v0.1.0-alpha008
+	github.com/docker/go-sdk/config v0.1.0-alpha009
 	github.com/stretchr/testify v1.10.0
 )
 
