@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/docker/go-sdk/client"
 )
 
 func TestCombineLifecycleHooks(t *testing.T) {
@@ -51,7 +53,16 @@ func TestCombineLifecycleHooks(t *testing.T) {
 	// call all the hooks in the right order, honouring the lifecycle
 
 	def := Definition{
+		image:          nginxAlpineImage,
 		lifecycleHooks: []LifecycleHooks{combineContainerHooks(defaultHooks, userDefinedHooks)},
+		// define a docker client to avoid the need to initialize the client
+		dockerClient: client.DefaultClient,
+		// avoid validation errors
+		validateFuncs: []func() error{
+			func() error {
+				return nil
+			},
+		},
 	}
 	err := def.creatingHook(context.Background())
 	require.NoError(t, err)
