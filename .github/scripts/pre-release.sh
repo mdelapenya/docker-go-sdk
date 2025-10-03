@@ -110,7 +110,13 @@ MODULE=$(echo "$MODULE" | tr '[:upper:]' '[:lower:]')
 if [[ "$DRY_RUN" == "true" ]]; then
   echo "[DRY RUN] Would update ${ROOT_DIR}/${MODULE}/version.go with version: ${NEXT_VERSION}"
 else
-  portable_sed "s/version = \"[^\"]*\"/version = \"${NEXT_VERSION}\"/" "${ROOT_DIR}/${MODULE}/version.go"
+  # Regex explanation:
+  #   ^([[:space:]]*version[[:space:]]*=[[:space:]]*)\"[^\"]*\"
+  #   - ^ : Start of line
+  #   - ([[:space:]]*version[[:space:]]*=[[:space:]]*) : Group 1 matches any leading whitespace, the word 'version', optional whitespace, '=', optional whitespace
+  #   - \"[^\"]*\" : Matches a quoted string (the version value)
+  # The replacement keeps the left part and replaces the quoted value with the new version.
+  portable_sed "s/^\([[:space:]]*version[[:space:]]*=[[:space:]]*\)\"[^\"]*\"/\1\"${NEXT_VERSION}\"/" "${ROOT_DIR}/${MODULE}/version.go"
 fi
 
 # if next version does not start with v, add it
@@ -133,14 +139,10 @@ echo "Next tag: ${NEXT_TAG}"
 MODULES=$(go work edit -json | jq -r '.Use[] | "\(.DiskPath | ltrimstr("./"))"' | tr '\n' ' ' && echo)
 
 # Save the next tag for the module to a file so that the release script can use it
-execute_or_echo echo "${NEXT_vVERSION}" > "${ROOT_DIR}/.github/scripts/.${MODULE}-next-tag"
+echo "${NEXT_vVERSION}" > "$(get_next_tag "${MODULE}")"
 
 for m in $MODULES; do
-  if [[ "$DRY_RUN" == "true" ]]; then
-    echo "[DRY RUN] Would update ${ROOT_DIR}/${m}/go.mod: ${GITHUB_REPO}/${MODULE} v${NEXT_VERSION}"
-  else
-    portable_sed "s|${GITHUB_REPO}/${MODULE} v[^[:space:]]*|${GITHUB_REPO}/${MODULE} v${NEXT_VERSION}|g" "${ROOT_DIR}/${m}/go.mod"
-    # Update the go.sum file
-    (cd "${ROOT_DIR}/${m}" && execute_or_echo go mod tidy)
-  fi
+  portable_sed "s|${GITHUB_REPO}/${MODULE} v[^[:space:]]*|${GITHUB_REPO}/${MODULE} v${NEXT_VERSION}|g" "${ROOT_DIR}/${m}/go.mod"
+  # Update the go.sum file
+  (cd "${ROOT_DIR}/${m}" && go mod tidy)
 done
