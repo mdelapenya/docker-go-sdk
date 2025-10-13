@@ -17,7 +17,7 @@ require (
 	github.com/docker/go-connections v0.5.0
 	github.com/docker/go-sdk/client v0.1.0-alpha010
 	github.com/docker/go-sdk/config v0.1.0-alpha010
-	github.com/docker/go-sdk/image v0.1.0-alpha010
+	github.com/docker/go-sdk/image v0.1.0-alpha011
 	github.com/docker/go-sdk/network v0.1.0-alpha010
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/sys v0.33.0
