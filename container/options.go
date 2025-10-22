@@ -9,10 +9,13 @@ import (
 	"slices"
 	"time"
 
+	"dario.cat/mergo"
+
 	"github.com/docker/docker/api/types/container"
 	apinetwork "github.com/docker/docker/api/types/network"
 	"github.com/docker/go-sdk/client"
 	"github.com/docker/go-sdk/container/exec"
+	"github.com/docker/go-sdk/container/log"
 	"github.com/docker/go-sdk/container/wait"
 	"github.com/docker/go-sdk/image"
 	"github.com/docker/go-sdk/network"
@@ -53,10 +56,81 @@ func WithConfigModifier(modifier func(config *container.Config)) CustomizeDefini
 	}
 }
 
+// WithAdditionalConfigModifier allows to add additional config to the container.
+// It applies the additional config after the original config.
+func WithAdditionalConfigModifier(modifier func(config *container.Config)) CustomizeDefinitionOption {
+	return func(def *Definition) error {
+		if def.configModifier == nil {
+			return errors.New("config modifier is not set")
+		}
+
+		originalModifier := def.configModifier
+
+		def.configModifier = func(config *container.Config) {
+			originalModifier(config)
+			modifier(config)
+		}
+
+		return nil
+	}
+}
+
 // WithEndpointSettingsModifier allows to override the default endpoint settings
 func WithEndpointSettingsModifier(modifier func(settings map[string]*apinetwork.EndpointSettings)) CustomizeDefinitionOption {
 	return func(def *Definition) error {
 		def.endpointSettingsModifier = modifier
+
+		return nil
+	}
+}
+
+// WithAdditionalEndpointSettingsModifier allows to add additional endpoint settings to the container.
+// It will merge the additional endpoint settings with the existing endpoint settings.
+func WithAdditionalEndpointSettingsModifier(modifier func(settings map[string]*apinetwork.EndpointSettings)) CustomizeDefinitionOption {
+	return func(def *Definition) error {
+		if def.endpointSettingsModifier == nil {
+			return errors.New("endpoint settings modifier is not set")
+		}
+
+		originalModifier := def.endpointSettingsModifier
+
+		def.endpointSettingsModifier = func(settings map[string]*apinetwork.EndpointSettings) {
+			// Apply the original modifier first
+			originalModifier(settings)
+
+			// Save copies of what the original modifier produced
+			originalSettings := make(map[string]*apinetwork.EndpointSettings, len(settings))
+			for k, v := range settings {
+				originalSettings[k] = v.Copy()
+			}
+
+			// Apply the user's modifier
+			modifier(settings)
+
+			// For any network that had original settings, merge them with current settings
+			for networkName, originalES := range originalSettings {
+				if currentES, exists := settings[networkName]; exists {
+					if currentES == nil {
+						// Restore the original settings, as additions shouldn't delete
+						settings[networkName] = originalES
+						continue
+					}
+
+					// Merge original into current to preserve original values
+					// while allowing user additions to take effect
+					if err := mergo.Merge(currentES, originalES, mergo.WithOverride); err != nil {
+						// Restore original for safety
+						log.Printf("failed to merge endpoint settings for network %q: %v, restoring original", networkName, err)
+						settings[networkName] = originalES
+						continue
+					}
+					settings[networkName] = currentES
+				} else {
+					// Network was removed by user modifier, restore it
+					settings[networkName] = originalES
+				}
+			}
+		}
 
 		return nil
 	}
@@ -79,6 +153,25 @@ func WithEnv(envs map[string]string) CustomizeDefinitionOption {
 func WithHostConfigModifier(modifier func(hostConfig *container.HostConfig)) CustomizeDefinitionOption {
 	return func(def *Definition) error {
 		def.hostConfigModifier = modifier
+
+		return nil
+	}
+}
+
+// WithAdditionalHostConfigModifier allows to add additional host config to the container.
+// It applies the additional host config after the original host config.
+func WithAdditionalHostConfigModifier(modifier func(hostConfig *container.HostConfig)) CustomizeDefinitionOption {
+	return func(def *Definition) error {
+		if def.hostConfigModifier == nil {
+			return errors.New("host config modifier is not set")
+		}
+
+		originalModifier := def.hostConfigModifier
+
+		def.hostConfigModifier = func(hostConfig *container.HostConfig) {
+			originalModifier(hostConfig)
+			modifier(hostConfig)
+		}
 
 		return nil
 	}
